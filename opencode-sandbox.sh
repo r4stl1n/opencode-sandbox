@@ -11,7 +11,7 @@ if [[ "${1:-}" = "help" ]]; then
    echo "Commands:"
    echo "  help    Show this help message."
    echo "  bash    Start a bash session inside the container."
-   echo "  down    Stop and remove the sandbox container."
+   echo "  stop    Stop and remove the sandbox container."
    echo "  update  Update opencode version."
    echo "  (none)  Run the 'opencode' command inside the container (default)."
    echo
@@ -96,7 +96,7 @@ fi
 # container name (default: opencode-<hash>)
 OPENCODE_SANDBOX_CONTAINER_NAME=${OPENCODE_SANDBOX_CONTAINER_NAME:-opencode-$HASH_DIR}
 
-if [[ "${1:-}" = "down" ]]; then
+if [[ "${1:-}" = "stop" ]]; then
    echo "[*] Deleting container '$OPENCODE_SANDBOX_CONTAINER_NAME'..."
    docker stop "$OPENCODE_SANDBOX_CONTAINER_NAME" > /dev/null && \
       docker rm "$OPENCODE_SANDBOX_CONTAINER_NAME" > /dev/null && \

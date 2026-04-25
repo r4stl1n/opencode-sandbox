@@ -124,10 +124,10 @@ Update opencode inside the container:
 opencode update
 ```
 
-#### Down
+#### Stop
 Stop and remove the sandbox container:
 ```bash
-opencode down
+opencode stop
 ```
 
 
