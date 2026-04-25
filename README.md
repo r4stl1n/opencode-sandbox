@@ -48,6 +48,11 @@ It can be associated with an alias in the `.profile` file.
 alias opencode="bash <this local repo>/opencode-sandbox.sh"
 ```
 
+To reuse the same .config/opencode use the following alias
+```bash
+alias ocsandbox='OPENCODE_SANDBOX_HOME=~/.config/opencode bash <this local repo>/opencode-sandbox.sh'
+```
+
 Now you can run `opencode` (or another alias name) in your project directory.
 
 
