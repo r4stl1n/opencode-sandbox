@@ -42,18 +42,16 @@ esac
 # docker image (default: opencode-sandbox)
 OPENCODE_SANDBOX_IMAGE_DOCKER=${OPENCODE_SANDBOX_IMAGE_DOCKER:-opencode-sandbox}
 
-# directory to mount as a home in the container (default: ~/.opencode_sandbox_home)
+# directory mounted as the opencode config dir in the container (default: ~/.opencode_sandbox_home)
+# Mounted at /opencode/.config/opencode (the opencode user's ~/.config/opencode).
 OPENCODE_SANDBOX_HOME=${OPENCODE_SANDBOX_HOME:-~/.opencode_sandbox_home}
 # Expand ~ if present
 OPENCODE_SANDBOX_HOME="${OPENCODE_SANDBOX_HOME/#\~/$HOME}"
 
-# create sandbox home if not exists
+# create sandbox config dir if not exists
 if [ ! -d "$OPENCODE_SANDBOX_HOME" ]; then
-   echo "[*] Creating sandbox home: $OPENCODE_SANDBOX_HOME ..."
+   echo "[*] Creating sandbox config dir: $OPENCODE_SANDBOX_HOME ..."
    mkdir -p "$OPENCODE_SANDBOX_HOME"
-   docker run --rm -it \
-      --mount "type=bind,source=$OPENCODE_SANDBOX_HOME,target=/sandbox_home" \
-      "$OPENCODE_SANDBOX_IMAGE_DOCKER" sh -c "cp -a /opencode/. /sandbox_home"
 fi
 
 # Detect local timezone in a portable way (timedatectl is Linux-only).
@@ -127,7 +125,7 @@ if [ -z "$RUNNING" ]; then # if the container doesn't exist
    fi
 
    docker run --name "$OPENCODE_SANDBOX_CONTAINER_NAME" -d \
-      --mount "type=bind,source=$OPENCODE_SANDBOX_HOME,target=/opencode" \
+      --mount "type=bind,source=$OPENCODE_SANDBOX_HOME,target=/opencode/.config/opencode" \
       --mount "type=bind,source=$OPENCODE_SANDBOX_ALLOWED_DIR,target=$OPENCODE_SANDBOX_ALLOWED_DIR" \
       --workdir "$OPENCODE_SANDBOX_ALLOWED_DIR" \
       -e TZ="$TZ" \
@@ -151,7 +149,7 @@ if [ -z "$RUNNING" ]; then # if the container doesn't exist
 
    if [ -f "$OPENCODE_SANDBOX_HOME/install.sh" ]; then
       echo "[*] Running install.sh ..."
-      docker exec -it "$OPENCODE_SANDBOX_CONTAINER_NAME" bash /opencode/install.sh
+      docker exec -it "$OPENCODE_SANDBOX_CONTAINER_NAME" bash /opencode/.config/opencode/install.sh
    fi
 
    RUNNING=true

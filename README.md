@@ -11,7 +11,7 @@ A lightweight, open-source sandbox to run **opencode** securely inside Docker on
 
 `opencode-sandbox` provides an isolated environment for running opencode in a controlled and reproducible way. By leveraging Docker, all execution happens inside a sandbox, minimizing risks to your host system.
 
-The project runs opencode inside a Docker container with a mapped home directory.
+The project runs opencode inside a Docker container with the opencode config directory mapped from the host.
 
 ---
 
@@ -35,7 +35,7 @@ Or run by saving state (opencode configs) in your real project.
 cd <my-project-directory>
 
 docker run --rm -it 
-  -v ~/.opencode_sandbox_home:/opencode \
+  -v ~/.opencode_sandbox_home:/opencode/.config/opencode \
   -v "$(pwd):$(pwd)" --workdir "$(pwd)" \
   opencode-sandbox
 ```
@@ -157,19 +157,20 @@ asdf plugin list all         # list all plugins
 
 ---
 
-## [*] Persistent Home
+## [*] Persistent Config
 
-The default directory for the persistent home is `~/.opencode_sandbox_home`
+The default directory for the persistent opencode config is `~/.opencode_sandbox_home`. It is bind-mounted into the container at `/opencode/.config/opencode` (the opencode user's `~/.config/opencode`).
 
 Stores:
 
-- opencode config and Sessions
-- Installed tools
-- Configurations
+- opencode config (`opencode.json`)
+- opencode sessions and other data opencode writes under its config dir
 
-To reset the environment, just delete it: `rm -r ~/.opencode_sandbox_home`
+Anything else inside the container (installed tools, shell history, etc.) is **not** persisted — it lives only for the lifetime of the container.
 
-You can configure a specific home directory for your alias with the `OPENCODE_SANDBOX_HOME` variable. For example:
+To reset the config, just delete it: `rm -r ~/.opencode_sandbox_home`
+
+You can point at a different host directory with the `OPENCODE_SANDBOX_HOME` variable:
 ```bash
 alias opencode="OPENCODE_SANDBOX_HOME=/your/custom/opencode_sandbox_home  bash <this local repo>/opencode-sandbox.sh"
 ```
@@ -177,7 +178,7 @@ alias opencode="OPENCODE_SANDBOX_HOME=/your/custom/opencode_sandbox_home  bash <
 ---
 
 ## [*] Default Model
-opencode reads its config from `~/.opencode_sandbox_home/.config/opencode/opencode.json` (the sandbox home, mounted at `/opencode` inside the container). Set the default model via the top-level `"model"` field, formatted as `"<provider>/<model-id>"`:
+opencode reads its config from `~/.opencode_sandbox_home/opencode.json` (the host directory, mounted at `/opencode/.config/opencode` inside the container). Set the default model via the top-level `"model"` field, formatted as `"<provider>/<model-id>"`:
 
 ```json
 {
@@ -206,7 +207,7 @@ This also prevents you from running opencode unintentionally in other directorie
 ## Variables 
 
 Script variables:
-- `OPENCODE_SANDBOX_HOME` - home persistence directory 
+- `OPENCODE_SANDBOX_HOME` - host directory mounted at `/opencode/.config/opencode` (opencode config persistence)
 - `OPENCODE_SANDBOX_ALLOWED_DIR` - your projects workspace/directory
 - `OPENCODE_SANDBOX_IMAGE_DOCKER` - custom image for docker
 - `OPENCODE_SANDBOX_CONTAINER_NAME` - set a container name (by default, it is 'opencode' with a hash of your workspace directory)
