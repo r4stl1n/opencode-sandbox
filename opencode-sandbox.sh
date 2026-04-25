@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
+set -euo pipefail
 
-
-if [[ "$1" = "help" ]]; then
+if [[ "${1:-}" = "help" ]]; then
 
    # Help message
    echo "opencode sandbox for docker."
@@ -19,153 +19,178 @@ if [[ "$1" = "help" ]]; then
    exit
 fi
 
-
-
 CURRENT_DIR=$(pwd)
 
-
-if [[ ! -v OPENCODE_SANDBOX_ALLOWED_DIR ]]; then
-   #echo "⚠️ Variable OPENCODE_SANDBOX_ALLOWED_DIR is not defined!"
-   #echo "   It is recommended to set the variable (in your .profile or befor call this command) for your project directory "
-   #echo "   ex:"
-   #echo "    export OPENCODE_SANDBOX_ALLOWED_DIR=~/MyProjects"
-   #echo
+# Bash 3.2-compatible "is variable set" check (replaces `[[ -v VAR ]]`).
+# Works on macOS's default /bin/bash as well as modern bash/zsh-invoked-as-bash.
+if [[ -z "${OPENCODE_SANDBOX_ALLOWED_DIR+x}" ]]; then
    OPENCODE_SANDBOX_ALLOWED_DIR=$CURRENT_DIR
 fi
 
-if [[ "$CURRENT_DIR" != "$OPENCODE_SANDBOX_ALLOWED_DIR"* ]]; then
-    echo "❌ Error: this command must be used just only in '$OPENCODE_SANDBOX_ALLOWED_DIR'"
-    exit 1
-fi
+# Expand a leading ~ in OPENCODE_SANDBOX_ALLOWED_DIR (since it may come from an
+# env var where tilde isn't expanded by the shell).
+OPENCODE_SANDBOX_ALLOWED_DIR="${OPENCODE_SANDBOX_ALLOWED_DIR/#\~/$HOME}"
 
+case "$CURRENT_DIR/" in
+    "$OPENCODE_SANDBOX_ALLOWED_DIR"/*) ;;
+    *)
+        echo "[!] Error: this command must be used just only in '$OPENCODE_SANDBOX_ALLOWED_DIR'"
+        exit 1
+        ;;
+esac
 
 # docker image (default: opencode-sandbox)
 OPENCODE_SANDBOX_IMAGE_DOCKER=${OPENCODE_SANDBOX_IMAGE_DOCKER:-opencode-sandbox}
 
-
 # directory to mount as a home in the container (default: ~/.opencode_sandbox_home)
 OPENCODE_SANDBOX_HOME=${OPENCODE_SANDBOX_HOME:-~/.opencode_sandbox_home}
-
+# Expand ~ if present
+OPENCODE_SANDBOX_HOME="${OPENCODE_SANDBOX_HOME/#\~/$HOME}"
 
 # create sandbox home if not exists
-if [ ! -d $OPENCODE_SANDBOX_HOME ]; then
-   echo "Creating sandbox home: $OPENCODE_SANDBOX_HOME  ..."
+if [ ! -d "$OPENCODE_SANDBOX_HOME" ]; then
+   echo "[*] Creating sandbox home: $OPENCODE_SANDBOX_HOME ..."
    mkdir -p "$OPENCODE_SANDBOX_HOME"
    docker run --rm -it \
-      -v "$OPENCODE_SANDBOX_HOME:/sandbox_home" \
-      $OPENCODE_SANDBOX_IMAGE_DOCKER sh -c "cp -a /opencode/. /sandbox_home"
+      --mount "type=bind,source=$OPENCODE_SANDBOX_HOME,target=/sandbox_home" \
+      "$OPENCODE_SANDBOX_IMAGE_DOCKER" sh -c "cp -a /opencode/. /sandbox_home"
 fi
 
+# Detect local timezone in a portable way (timedatectl is Linux-only).
+detect_tz() {
+   # 1) Honor an explicit TZ env var if already set
+   if [[ -n "${TZ:-}" ]]; then
+      echo "$TZ"
+      return
+   fi
+   # 2) macOS / many Linux distros: /etc/localtime is a symlink into zoneinfo
+   if [[ -L /etc/localtime ]]; then
+      local link
+      link=$(readlink /etc/localtime 2>/dev/null)
+      # Strip everything up to and including "/zoneinfo/"
+      case "$link" in
+         */zoneinfo/*) echo "${link##*/zoneinfo/}"; return ;;
+      esac
+   fi
+   # 3) Some Linux distros: /etc/timezone is a plain text file
+   if [[ -r /etc/timezone ]]; then
+      cat /etc/timezone
+      return
+   fi
+   # 4) Linux with timedatectl available
+   if command -v timedatectl >/dev/null 2>&1; then
+      timedatectl show -p Timezone --value 2>/dev/null && return
+   fi
+   # 5) Fallback
+   echo "UTC"
+}
+TZ=$(detect_tz)
 
-
-# getting local timezone
-TZ=$(timedatectl | grep Time | cut -d':' -f2 | cut -d' ' -f2)
-
-
-
-# hash to evict conflict with multiple opencode environments
-HASH_DIR=$(echo -n "$OPENCODE_SANDBOX_ALLOWED_DIR" | sha1sum | cut -c 1-4)
+# Portable short hash of the allowed dir (sha1sum is Linux; shasum is on macOS).
+if command -v sha1sum >/dev/null 2>&1; then
+   HASH_DIR=$(echo -n "$OPENCODE_SANDBOX_ALLOWED_DIR" | sha1sum | cut -c 1-4)
+else
+   HASH_DIR=$(echo -n "$OPENCODE_SANDBOX_ALLOWED_DIR" | shasum | cut -c 1-4)
+fi
 
 # container name (default: opencode-<hash>)
 OPENCODE_SANDBOX_CONTAINER_NAME=${OPENCODE_SANDBOX_CONTAINER_NAME:-opencode-$HASH_DIR}
 
-
-
-if [[ "$1" = "down" ]]; then
-   echo "⚠️ Deleting container '$OPENCODE_SANDBOX_CONTAINER_NAME'..."
-   docker stop $OPENCODE_SANDBOX_CONTAINER_NAME > /dev/null && \
-      docker rm $OPENCODE_SANDBOX_CONTAINER_NAME > /dev/null && \
-      echo "✅ Container '$OPENCODE_SANDBOX_CONTAINER_NAME' deleted."
+if [[ "${1:-}" = "down" ]]; then
+   echo "[*] Deleting container '$OPENCODE_SANDBOX_CONTAINER_NAME'..."
+   docker stop "$OPENCODE_SANDBOX_CONTAINER_NAME" > /dev/null && \
+      docker rm "$OPENCODE_SANDBOX_CONTAINER_NAME" > /dev/null && \
+      echo "[+] Container '$OPENCODE_SANDBOX_CONTAINER_NAME' deleted."
 
    exit
 fi
 
-
-
 # Check if the container exists and get its running state
-RUNNING=$(docker inspect -f '{{.State.Running}}' $OPENCODE_SANDBOX_CONTAINER_NAME 2>/dev/null)
+if ! RUNNING=$(docker inspect -f '{{.State.Running}}' "$OPENCODE_SANDBOX_CONTAINER_NAME" 2>/dev/null); then
+   RUNNING=""
+fi
 
-
-if [ $? -ne 0 ]; then # if the container doesn't exist
-   echo "⚠️ Status: Container '$OPENCODE_SANDBOX_CONTAINER_NAME' does not exist."
-
-   echo "   Creating with home from: $OPENCODE_SANDBOX_HOME"
-   echo "   ..."
+if [ -z "$RUNNING" ]; then # if the container doesn't exist
+   echo "[*] Container '$OPENCODE_SANDBOX_CONTAINER_NAME' does not exist."
+   echo "[*] Creating with home from: $OPENCODE_SANDBOX_HOME"
 
    OPENCODE_PORT=${OPENCODE_PORT:-4096}
 
-   docker run --name $OPENCODE_SANDBOX_CONTAINER_NAME -d \
-      -v "$OPENCODE_SANDBOX_HOME:/opencode" \
-      -v "$OPENCODE_SANDBOX_ALLOWED_DIR:$OPENCODE_SANDBOX_ALLOWED_DIR" \
-      --workdir "$OPENCODE_SANDBOX_ALLOWED_DIR" \
-      -e TZ=$TZ \
-      -e OPENCODE_PORT=$OPENCODE_PORT \
-      --network host \
-      $OPENCODE_SANDBOX_IMAGE_DOCKER bash -c "while true; do sleep 3600; done"
+   # On macOS, --network host does not behave like on Linux (the container's
+   # localhost is not the host's localhost on Docker Desktop). Use bridge +
+   # explicit port publishing for portability.
+   UNAME_S=$(uname -s)
+   if [[ "$UNAME_S" == "Darwin" ]]; then
+      NETWORK_ARGS=(-p "127.0.0.1:${OPENCODE_PORT}:${OPENCODE_PORT}")
+   else
+      NETWORK_ARGS=(--network host)
+   fi
 
-   if [ $? -ne 0 ]; then
-      echo "❌ Error: The container could not be started."
+   docker run --name "$OPENCODE_SANDBOX_CONTAINER_NAME" -d \
+      --mount "type=bind,source=$OPENCODE_SANDBOX_HOME,target=/opencode" \
+      --mount "type=bind,source=$OPENCODE_SANDBOX_ALLOWED_DIR,target=$OPENCODE_SANDBOX_ALLOWED_DIR" \
+      --workdir "$OPENCODE_SANDBOX_ALLOWED_DIR" \
+      -e TZ="$TZ" \
+      -e OPENCODE_PORT="$OPENCODE_PORT" \
+      "${NETWORK_ARGS[@]}" \
+      "$OPENCODE_SANDBOX_IMAGE_DOCKER" bash -c "while true; do sleep 3600; done" \
+      || { echo "[!] Error: The container could not be started."; exit 1; }
+
+   # Poll for running state up to 30s instead of a blind sleep.
+   for _ in $(seq 1 30); do
+      STATE=$(docker inspect -f '{{.State.Running}}' "$OPENCODE_SANDBOX_CONTAINER_NAME" 2>/dev/null || true)
+      if [ "$STATE" = "true" ]; then
+         break
+      fi
+      sleep 1
+   done
+   if [ "${STATE:-}" != "true" ]; then
+      echo "[!] Error: timed out waiting for container '$OPENCODE_SANDBOX_CONTAINER_NAME' to reach running state."
       exit 1
    fi
 
-   sleep 1
-
-   if [ -f $OPENCODE_SANDBOX_HOME/install.sh ]; then
-      echo "🚀 Running install.sh ..."
-      docker exec -it $OPENCODE_SANDBOX_CONTAINER_NAME bash /opencode/install.sh
+   if [ -f "$OPENCODE_SANDBOX_HOME/install.sh" ]; then
+      echo "[*] Running install.sh ..."
+      docker exec -it "$OPENCODE_SANDBOX_CONTAINER_NAME" bash /opencode/install.sh
    fi
 
    RUNNING=true
 fi
 
 if [ "$RUNNING" == "true" ]; then
-   echo "✅ Container '$OPENCODE_SANDBOX_CONTAINER_NAME' is already running."
+   echo "[+] Container '$OPENCODE_SANDBOX_CONTAINER_NAME' is already running."
 else
-   echo "⚠️ Container '$OPENCODE_SANDBOX_CONTAINER_NAME' is stopped. Starting it now..."
-   docker start $OPENCODE_SANDBOX_CONTAINER_NAME > /dev/null || exit 1
+   echo "[*] Container '$OPENCODE_SANDBOX_CONTAINER_NAME' is stopped. Starting it now..."
+   docker start "$OPENCODE_SANDBOX_CONTAINER_NAME" > /dev/null || exit 1
 fi
 
 
-
-
-if [ "$1" = "update" ]; then
-   echo "🚀 Updating opencode ..."
+if [ "${1:-}" = "update" ]; then
+   echo "[*] Updating opencode ..."
    docker exec -it -u root \
-      $OPENCODE_SANDBOX_CONTAINER_NAME sh -c \
+      "$OPENCODE_SANDBOX_CONTAINER_NAME" sh -c \
       "curl -fsSL https://opencode.ai/install | bash  && mv /root/.opencode/bin/opencode /usr/local/bin/"
-   echo "✅ Done."
+   echo "[+] Done."
    exit 0
 fi
 
-
-
-
 CMD1="opencode"
-PARAMS=$@
+# Use an array so arguments with spaces survive intact.
+PARAMS=("$@")
 
 
-if [ "$1" = "bash" ]; then
+if [ "${1:-}" = "bash" ]; then
    CMD1="bash"
-   PARAMS=()
+   PARAMS=("${@:2}")
 fi
 
 
-
-
-
-echo "🚀 Running $CMD1 ${PARAMS[@]} "
-echo "   workdir: $CURRENT_DIR"
-echo "   home from: $OPENCODE_SANDBOX_HOME"
-echo 
+echo "[*] Running $CMD1 ${PARAMS[*]:-}"
+echo "    workdir:   $CURRENT_DIR"
+echo "    home from: $OPENCODE_SANDBOX_HOME"
+echo
 sleep 1
-
 
 docker exec -it \
    -w "$CURRENT_DIR" \
-   $OPENCODE_SANDBOX_CONTAINER_NAME $CMD1 $PARAMS
-
-
-
-
-
-
+   "$OPENCODE_SANDBOX_CONTAINER_NAME" "$CMD1" ${PARAMS[@]:+"${PARAMS[@]}"}

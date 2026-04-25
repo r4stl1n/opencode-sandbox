@@ -2,13 +2,12 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-blue)
-![Platform](https://img.shields.io/badge/platform-linux-lightgrey)
+![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macOS-lightgrey)
 
-A lightweight, open-source sandbox to run **opencode** securely inside Docker for linux users.
-
+A lightweight, open-source sandbox to run **opencode** securely inside Docker on Linux and macOS.
 ---
 
-## 📌 Overview
+## [*] Overview
 
 `opencode-sandbox` provides an isolated environment for running opencode in a controlled and reproducible way. By leveraging Docker, all execution happens inside a sandbox, minimizing risks to your host system.
 
@@ -16,7 +15,7 @@ The project runs opencode inside a Docker container with a mapped home directory
 
 ---
 
-## 🚀 Quick Start
+## [*] Quick Start
 
 ```bash
 # get this repo
@@ -54,11 +53,11 @@ Now you can run `opencode` (or another alias name) in your project directory.
 
 ---
 
-## 🎯 Motivation
+## [*] Motivation
 
 While solutions like Docker Sandboxes exist, they typically require **Docker Desktop**.
 
-This is a problem for many Linux users who:
+This is a problem for users who:
 
 - Prefer native Docker Engine
 - Avoid heavy GUI-based tooling
@@ -66,16 +65,16 @@ This is a problem for many Linux users who:
 
 `opencode-sandbox` is designed to be:
 
-- 🪶 Lightweight
-- 🐧 Linux-first
-- 🔧 CLI-native
-- 🔒 Security-focused
+- [*] Lightweight
+- [*] Linux & macOS friendly
+- [*] CLI-native
+- [*] Security-focused
 
 No Docker Desktop required — just plain Docker.
 
 ---
 
-## 🔐 Why Sandbox AI Tools?
+## [*] Why Sandbox AI Tools?
 
 AI tools may:
 
@@ -85,15 +84,15 @@ AI tools may:
 
 Without isolation, this can lead to:
 
-- ❌ File corruption or deletion
-- ❌ Execution of unsafe code
-- ❌ Polluted development environments
+- [!] File corruption or deletion
+- [!] Execution of unsafe code
+- [!] Polluted development environments
 
 Using Docker sandboxing ensures:
 
-- ✅ Host system protection
-- ✅ Isolated execution
-- ✅ Reproducible environments
+- [+] Host system protection
+- [+] Isolated execution
+- [+] Reproducible environments
 
 
 ---
@@ -101,6 +100,12 @@ Using Docker sandboxing ensures:
 ### Special Parameters
 
 After you have created the alias for the script, you can use special parameters:
+
+#### Help
+Show the list of available commands:
+```bash
+opencode help
+```
 
 #### Bash Mode
 Start a bash terminal in your container:
@@ -128,7 +133,7 @@ opencode down
 
 ---
 
-## 🔧 Installing tools
+## [*] Installing tools
 
 You can prompt opencode to "install nodejs 22 with asdf".
 
@@ -152,7 +157,7 @@ asdf plugin list all         # list all plugins
 
 ---
 
-## 💾 Persistent Home
+## [*] Persistent Home
 
 The default directory for the persistent home is `~/.opencode_sandbox_home`
 
@@ -168,6 +173,20 @@ You can configure a specific home directory for your alias with the `OPENCODE_SA
 ```bash
 alias opencode="OPENCODE_SANDBOX_HOME=/your/custom/opencode_sandbox_home  bash <this local repo>/opencode-sandbox.sh"
 ```
+
+---
+
+## [*] Default Model
+opencode reads its config from `~/.config/opencode/opencode.json` (symlinked into the sandbox home). Set the default model via the top-level `"model"` field, formatted as `"<provider>/<model-id>"`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-6"
+}
+```
+
+The provider key must match either a built-in opencode provider or a custom one defined under `"provider"` in the same file. Changes take effect on the next opencode session — no container rebuild needed.
 
 ---
 
@@ -191,6 +210,7 @@ Script variables:
 - `OPENCODE_SANDBOX_ALLOWED_DIR` - your projects workspace/directory
 - `OPENCODE_SANDBOX_IMAGE_DOCKER` - custom image for docker
 - `OPENCODE_SANDBOX_CONTAINER_NAME` - set a container name (by default, it is 'opencode' with a hash of your workspace directory)
+- `OPENCODE_PORT` - port exposed by the container (default: `4096`). On macOS this is published as `127.0.0.1:<port>:<port>`; on Linux the container runs with `--network host`.
 
 
 ---
@@ -202,12 +222,9 @@ Currently, some features are not supported:
 
 ---
 
-## 🤝 Contributing
-
+## [*] Contributing
 PRs and issues are welcome!
-
 ---
 
-## 📄 License
-
+## [*] License
 MIT License
