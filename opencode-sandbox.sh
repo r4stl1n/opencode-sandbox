@@ -85,14 +85,20 @@ detect_tz() {
 TZ=$(detect_tz)
 
 # Portable short hash of the allowed dir (sha1sum is Linux; shasum is on macOS).
+# Used as a stable 4-char suffix so the same folder always resolves to the same
+# container (random-per-invocation would break container reuse).
 if command -v sha1sum >/dev/null 2>&1; then
    HASH_DIR=$(echo -n "$OPENCODE_SANDBOX_ALLOWED_DIR" | sha1sum | cut -c 1-4)
 else
    HASH_DIR=$(echo -n "$OPENCODE_SANDBOX_ALLOWED_DIR" | shasum | cut -c 1-4)
 fi
 
-# container name (default: opencode-<hash>)
-OPENCODE_SANDBOX_CONTAINER_NAME=${OPENCODE_SANDBOX_CONTAINER_NAME:-opencode-$HASH_DIR}
+# Folder basename, sanitized to docker-safe chars ([a-zA-Z0-9_.-]).
+raw=$(basename "$OPENCODE_SANDBOX_ALLOWED_DIR")
+FOLDER_NAME=${raw//[^a-zA-Z0-9_.-]/-}
+
+# container name (default: ocsandbox-<folder>-<hash>)
+OPENCODE_SANDBOX_CONTAINER_NAME=${OPENCODE_SANDBOX_CONTAINER_NAME:-ocsandbox-$FOLDER_NAME-$HASH_DIR}
 
 if [[ "${1:-}" = "stop" ]]; then
    echo "[*] Deleting container '$OPENCODE_SANDBOX_CONTAINER_NAME'..."
