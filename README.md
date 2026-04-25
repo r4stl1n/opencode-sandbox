@@ -177,7 +177,7 @@ alias opencode="OPENCODE_SANDBOX_HOME=/your/custom/opencode_sandbox_home  bash <
 ---
 
 ## [*] Default Model
-opencode reads its config from `~/.config/opencode/opencode.json` (symlinked into the sandbox home). Set the default model via the top-level `"model"` field, formatted as `"<provider>/<model-id>"`:
+opencode reads its config from `~/.opencode_sandbox_home/.config/opencode/opencode.json` (the sandbox home, mounted at `/opencode` inside the container). Set the default model via the top-level `"model"` field, formatted as `"<provider>/<model-id>"`:
 
 ```json
 {
