@@ -112,7 +112,11 @@ if [ -z "$RUNNING" ]; then # if the container doesn't exist
    echo "[*] Container '$OPENCODE_SANDBOX_CONTAINER_NAME' does not exist."
    echo "[*] Creating with home from: $OPENCODE_SANDBOX_HOME"
 
-   OPENCODE_PORT=${OPENCODE_PORT:-4096}
+   # Pick a random high port if not explicitly set, so multiple sandboxes
+   # can coexist without colliding on a fixed port.
+   if [[ -z "${OPENCODE_PORT:-}" ]]; then
+      OPENCODE_PORT=$(( (RANDOM % 16384) + 49152 ))
+   fi
 
    # On macOS, --network host does not behave like on Linux (the container's
    # localhost is not the host's localhost on Docker Desktop). Use bridge +
@@ -188,6 +192,16 @@ echo "    workdir:   $CURRENT_DIR"
 echo "    home from: $OPENCODE_SANDBOX_HOME"
 echo
 sleep 1
+
+# Stop the container on exit (Ctrl+C, normal quit, or error) so the sandbox
+# doesn't keep running after the interactive session ends. The container is
+# left in place and will be reused on the next invocation.
+cleanup_container() {
+   echo
+   echo "[*] Stopping container '$OPENCODE_SANDBOX_CONTAINER_NAME'..."
+   docker stop "$OPENCODE_SANDBOX_CONTAINER_NAME" > /dev/null 2>&1 || true
+}
+trap cleanup_container EXIT INT TERM
 
 docker exec -it \
    -w "$CURRENT_DIR" \
