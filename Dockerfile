@@ -32,6 +32,11 @@ RUN groupadd -g 1000 opencode && \
 # allow opencode work and mount (as volumes) workspace/projects dirs
 RUN mkdir -p /workspace && chown -R opencode:opencode /workspace
 
+# Pre-create the config dir owned by opencode so that bind-mounting individual
+# config files into it (rather than the whole dir) doesn't leave the parent
+# owned by root and unwritable for opencode's own plugin install.
+RUN mkdir -p /opencode/.config/opencode && chown -R opencode:opencode /opencode/.config
+
 # set default workspace
 WORKDIR /workspace
 

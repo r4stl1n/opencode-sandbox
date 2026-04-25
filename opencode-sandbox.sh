@@ -42,8 +42,11 @@ esac
 # docker image (default: opencode-sandbox)
 OPENCODE_SANDBOX_IMAGE_DOCKER=${OPENCODE_SANDBOX_IMAGE_DOCKER:-opencode-sandbox}
 
-# directory mounted as the opencode config dir in the container (default: ~/.opencode_sandbox_home)
-# Mounted at /opencode/.config/opencode (the opencode user's ~/.config/opencode).
+# Host directory containing the opencode config items we want synced into the
+# container's /opencode/.config/opencode. Only specific entries are mounted
+# (see SYNCED_CONFIG_ITEMS below) so that opencode's runtime plugin install
+# (node_modules, package.json, lockfiles) stays container-internal instead of
+# leaking back onto the host.
 OPENCODE_SANDBOX_HOME=${OPENCODE_SANDBOX_HOME:-~/.opencode_sandbox_home}
 # Expand ~ if present
 OPENCODE_SANDBOX_HOME="${OPENCODE_SANDBOX_HOME/#\~/$HOME}"
@@ -53,6 +56,10 @@ if [ ! -d "$OPENCODE_SANDBOX_HOME" ]; then
    echo "[*] Creating sandbox config dir: $OPENCODE_SANDBOX_HOME ..."
    mkdir -p "$OPENCODE_SANDBOX_HOME"
 fi
+
+# Items under $OPENCODE_SANDBOX_HOME that get bind-mounted into the container's
+# config dir. Each one is mounted only if it exists on the host.
+SYNCED_CONFIG_ITEMS=("opencode.json" "AGENTS.md" "skills" "tools" "install.sh")
 
 # Detect local timezone in a portable way (timedatectl is Linux-only).
 detect_tz() {
@@ -153,8 +160,17 @@ if [ -z "$RUNNING" ]; then # if the container doesn't exist
       done
    fi
 
+   CONFIG_MOUNTS=()
+   for item in "${SYNCED_CONFIG_ITEMS[@]}"; do
+      src="$OPENCODE_SANDBOX_HOME/$item"
+      if [ -e "$src" ]; then
+         CONFIG_MOUNTS+=(--mount "type=bind,source=$src,target=/opencode/.config/opencode/$item")
+         echo "[*] Syncing config item: $item"
+      fi
+   done
+
    docker run --name "$OPENCODE_SANDBOX_CONTAINER_NAME" -d \
-      --mount "type=bind,source=$OPENCODE_SANDBOX_HOME,target=/opencode/.config/opencode" \
+      ${CONFIG_MOUNTS[@]+"${CONFIG_MOUNTS[@]}"} \
       --mount "type=bind,source=$OPENCODE_SANDBOX_ALLOWED_DIR,target=$OPENCODE_SANDBOX_ALLOWED_DIR" \
       --workdir "$OPENCODE_SANDBOX_ALLOWED_DIR" \
       -e TZ="$TZ" \

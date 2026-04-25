@@ -154,14 +154,15 @@ asdf plugin list all         # list all plugins
 
 ## [*] Persistent Config
 
-The default directory for the persistent opencode config is `~/.opencode_sandbox_home`. It is bind-mounted into the container at `/opencode/.config/opencode` (the opencode user's `~/.config/opencode`).
+The default directory for the persistent opencode config is `~/.opencode_sandbox_home`. Instead of bind-mounting the whole directory into the container's `/opencode/.config/opencode`, only a fixed allowlist of items is mounted (each one only if it exists on the host):
 
-Stores:
+- `opencode.json`
+- `AGENTS.md`
+- `skills/`
+- `tools/`
+- `install.sh` (see [Install Hook](#-install-hook))
 
-- opencode config (`opencode.json`)
-- opencode sessions and other data opencode writes under its config dir
-
-Anything else inside the container (installed tools, shell history, etc.) is **not** persisted — it lives only for the lifetime of the container.
+Anything else opencode writes under its config dir at runtime — most notably the plugin runtime install (`node_modules`, `package.json`, `package-lock.json`, `bun.lock` for `@opencode-ai/plugin`) — stays inside the container and does **not** leak back onto the host. Anything else inside the container (installed tools, shell history, etc.) is also **not** persisted — it lives only for the lifetime of the container.
 
 To reset the config, just delete it: `rm -r ~/.opencode_sandbox_home`
 
@@ -169,6 +170,10 @@ You can point at a different host directory with the `OPENCODE_SANDBOX_HOME` var
 ```bash
 alias ocsandbox="OPENCODE_SANDBOX_HOME=/your/custom/opencode_sandbox_home  bash <this local repo>/opencode-sandbox.sh"
 ```
+
+### Install Hook
+
+If `install.sh` exists at the root of `OPENCODE_SANDBOX_HOME`, it is executed inside the container the first time the container is created. Use it as a one-time provisioning hook — for example to `apt-get install` extra tools or set up language runtimes via `asdf` — without rebuilding the Docker image.
 
 ---
 
@@ -202,7 +207,7 @@ This also prevents you from running opencode unintentionally in other directorie
 ## Variables 
 
 Script variables:
-- `OPENCODE_SANDBOX_HOME` - host directory mounted at `/opencode/.config/opencode` (opencode config persistence)
+- `OPENCODE_SANDBOX_HOME` - host directory holding opencode config items (`opencode.json`, `AGENTS.md`, `skills/`, `tools/`, `install.sh`); only those allowlisted items are bind-mounted into `/opencode/.config/opencode`, so opencode's runtime plugin install stays container-internal
 - `OPENCODE_SANDBOX_ALLOWED_DIR` - your projects workspace/directory
 - `OPENCODE_SANDBOX_IMAGE_DOCKER` - custom image for docker
 - `OPENCODE_SANDBOX_CONTAINER_NAME` - set a container name (by default, it is 'opencode' with a hash of your workspace directory)
