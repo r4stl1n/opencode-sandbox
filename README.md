@@ -113,10 +113,16 @@ Update opencode inside the container:
 ocsandbox update
 ```
 
-#### Stop
-Stop and remove the sandbox container:
+#### Destroy
+Stop and remove the sandbox container for the current folder. Each folder
+gets its own container (named after the folder + a short hash of its path),
+so `destroy` only affects the sandbox tied to the directory you run it in —
+sandboxes for other folders are left untouched. The container is also
+stopped automatically when you exit an `ocsandbox` session; `destroy` is
+for when you want to fully remove it (e.g. to recreate it with different
+ports or a clean state):
 ```bash
-ocsandbox stop
+ocsandbox destroy
 ```
 
 
@@ -201,7 +207,7 @@ Script variables:
 - `OPENCODE_SANDBOX_IMAGE_DOCKER` - custom image for docker
 - `OPENCODE_SANDBOX_CONTAINER_NAME` - set a container name (by default, it is 'opencode' with a hash of your workspace directory)
 - `OPENCODE_PORT` - port exposed by the container (default: `4096`). On macOS this is published as `127.0.0.1:<port>:<port>`; on Linux the container runs with `--network host`.
-- `OPENCODE_SANDBOX_PORTS` - comma-separated extra ports to publish (e.g. `OPENCODE_SANDBOX_PORTS="3000,5173"`) for things like web dev servers. Each port is published as `127.0.0.1:<port>:<port>`. Ports are baked in at container creation, so changing them requires `ocsandbox stop` and a re-run.
+- `OPENCODE_SANDBOX_PORTS` - comma-separated extra ports to publish (e.g. `OPENCODE_SANDBOX_PORTS="3000,5173"`) for things like web dev servers. Each port is published as `127.0.0.1:<port>:<port>`. Ports are baked in at container creation, so changing them requires `ocsandbox destroy` and a re-run.
 
 
 ---

@@ -9,11 +9,11 @@ if [[ "${1:-}" = "help" ]]; then
    echo "Usage: ./opencode-sandbox.sh [command] [args]"
    echo
    echo "Commands:"
-   echo "  help    Show this help message."
-   echo "  bash    Start a bash session inside the container."
-   echo "  stop    Stop and remove the sandbox container."
-   echo "  update  Update opencode version."
-   echo "  (none)  Run the 'opencode' command inside the container (default)."
+   echo "  help     Show this help message."
+   echo "  bash     Start a bash session inside the container."
+   echo "  destroy  Stop and remove the sandbox container."
+   echo "  update   Update opencode version."
+   echo "  (none)   Run the 'opencode' command inside the container (default)."
    echo
 
    exit
@@ -100,7 +100,7 @@ FOLDER_NAME=${raw//[^a-zA-Z0-9_.-]/-}
 # container name (default: ocsandbox-<folder>-<hash>)
 OPENCODE_SANDBOX_CONTAINER_NAME=${OPENCODE_SANDBOX_CONTAINER_NAME:-ocsandbox-$FOLDER_NAME-$HASH_DIR}
 
-if [[ "${1:-}" = "stop" ]]; then
+if [[ "${1:-}" = "destroy" ]]; then
    echo "[*] Deleting container '$OPENCODE_SANDBOX_CONTAINER_NAME'..."
    docker stop "$OPENCODE_SANDBOX_CONTAINER_NAME" > /dev/null && \
       docker rm "$OPENCODE_SANDBOX_CONTAINER_NAME" > /dev/null && \
@@ -130,8 +130,10 @@ if [ -z "$RUNNING" ]; then # if the container doesn't exist
    UNAME_S=$(uname -s)
    if [[ "$UNAME_S" == "Darwin" ]]; then
       NETWORK_ARGS=(-p "127.0.0.1:${OPENCODE_PORT}:${OPENCODE_PORT}")
+      echo "[*] Forwarding port 127.0.0.1:${OPENCODE_PORT} -> container:${OPENCODE_PORT} (opencode)"
    else
       NETWORK_ARGS=(--network host)
+      echo "[*] Using host networking; opencode listening on port ${OPENCODE_PORT}"
    fi
 
    # Extra ports for things like dev servers (e.g. OPENCODE_SANDBOX_PORTS="3000,5173").
@@ -147,6 +149,7 @@ if [ -z "$RUNNING" ]; then # if the container doesn't exist
             exit 1
          fi
          NETWORK_ARGS+=(-p "127.0.0.1:${p}:${p}")
+         echo "[*] Forwarding extra port 127.0.0.1:${p} -> container:${p}"
       done
    fi
 
