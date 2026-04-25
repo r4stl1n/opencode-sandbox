@@ -27,22 +27,7 @@ docker build -t opencode-sandbox .
 # run it to try it out
 docker run --rm -it opencode-sandbox
 ```
-
-
-Or run by saving state (opencode configs) in your real project.
-
-```bash
-cd <my-project-directory>
-
-docker run --rm -it 
-  -v ~/.opencode_sandbox_home:/opencode/.config/opencode \
-  -v "$(pwd):$(pwd)" --workdir "$(pwd)" \
-  opencode-sandbox
-```
-
-The `docker run --rm` is not a good option for real use. However, the `opencode-sandbox.sh` script is available, which manages the container instance and allows configuring environments.
-
-It can be associated with an alias in the `.profile` file.
+Now associate the script with an alias in the `.profile, .bashrc, .zshrc, etc` file.
 
 ```bash
 alias ocsandbox="bash <this local repo>/opencode-sandbox.sh"
@@ -54,7 +39,6 @@ alias ocsandbox='OPENCODE_SANDBOX_HOME=~/.config/opencode bash <this local repo>
 ```
 
 Now you can run `ocsandbox` (or another alias name) in your project directory.
-
 
 ---
 
