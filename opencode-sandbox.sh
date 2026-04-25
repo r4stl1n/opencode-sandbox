@@ -134,6 +134,22 @@ if [ -z "$RUNNING" ]; then # if the container doesn't exist
       NETWORK_ARGS=(--network host)
    fi
 
+   # Extra ports for things like dev servers (e.g. OPENCODE_SANDBOX_PORTS="3000,5173").
+   # Published on both Darwin and Linux: on Linux with --network host docker prints a
+   # harmless warning and the ports work via host networking anyway.
+   if [[ -n "${OPENCODE_SANDBOX_PORTS:-}" ]]; then
+      IFS=',' read -ra EXTRA_PORTS <<< "$OPENCODE_SANDBOX_PORTS"
+      for p in "${EXTRA_PORTS[@]}"; do
+         p="${p// /}"
+         [[ -z "$p" ]] && continue
+         if ! [[ "$p" =~ ^[0-9]+$ ]] || (( p < 1 || p > 65535 )); then
+            echo "[!] Error: invalid port in OPENCODE_SANDBOX_PORTS: '$p'"
+            exit 1
+         fi
+         NETWORK_ARGS+=(-p "127.0.0.1:${p}:${p}")
+      done
+   fi
+
    docker run --name "$OPENCODE_SANDBOX_CONTAINER_NAME" -d \
       --mount "type=bind,source=$OPENCODE_SANDBOX_HOME,target=/opencode/.config/opencode" \
       --mount "type=bind,source=$OPENCODE_SANDBOX_ALLOWED_DIR,target=$OPENCODE_SANDBOX_ALLOWED_DIR" \
