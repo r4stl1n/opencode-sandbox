@@ -26,6 +26,22 @@ RUN apt-get update && apt-get install -y \
 RUN groupadd -g 1001 opencode && \
     useradd -u 1001 -g opencode -m -d /opencode -s /bin/bash opencode
 
+# opencode shells out via non-interactive `bash -c`. BASH_ENV makes those
+# invocations source ~/.bashrc so anything install.sh sets up (nvm/node, pyenv,
+# rbenv, custom PATH, etc.) is visible without per-tool symlinks into
+# /usr/local/bin.
+ENV BASH_ENV=/opencode/.bashrc
+
+# Replace the default ~/.bashrc with one that does NOT short-circuit for
+# non-interactive shells, so nvm's loader (appended by `nvm install`) runs for
+# opencode's `bash -c` invocations too. Keep the rest of the user's defaults.
+RUN printf '%s\n' \
+    '# opencode-sandbox: non-interactive friendly bashrc.' \
+    '# The default Ubuntu skeleton returns early for non-interactive shells,' \
+    '# which breaks opencode tooling that expects nvm/pyenv/etc. on PATH.' \
+    'export PATH="$HOME/.local/bin:$PATH"' \
+    > /opencode/.bashrc && chown opencode:opencode /opencode/.bashrc
+
 # allow opencode work and mount (as volumes) workspace/projects dirs
 RUN mkdir -p /workspace && chown -R opencode:opencode /workspace
 
