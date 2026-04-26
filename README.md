@@ -83,7 +83,6 @@ Using Docker sandboxing ensures:
 - [+] Isolated execution
 - [+] Reproducible environments
 
-
 ---
 
 ### Special Parameters
@@ -125,31 +124,6 @@ ports or a clean state):
 ocsandbox destroy
 ```
 
-
----
-
-## [*] Installing tools
-
-You can prompt opencode to "install nodejs 22 with asdf".
-
-Or inside the container:
-
-```bash
-## example: install nodejs
-asdf plugin add nodejs       # add nodejs plugin
-asdf list all nodejs 24      # list all sub-versions of nodejs 24 
-asdf latest nodejs 24        # get latest version of 24
-asdf install nodejs 24.14.1  # install a specific version
-asdf set nodejs 24.14.1      # set a specific version for the current project
-asdf set -u nodejs 24.14.1   # set a specific version as the default for the user
-```
-
-You can install Node.js, Python, Java, mvn, or more than 800 [plugins](https://github.com/asdf-vm/asdf-plugins?tab=readme-ov-file#plugin-list)
-
-```bash
-asdf plugin list all         # list all plugins
-```
-
 ---
 
 ## [*] Persistent Config
@@ -174,6 +148,8 @@ alias ocsandbox="OPENCODE_SANDBOX_HOME=/your/custom/opencode_sandbox_home  bash 
 ### Install Hook
 
 If `install.sh` exists at the root of `OPENCODE_SANDBOX_HOME`, it is executed inside the container the first time the container is created. Use it as a one-time provisioning hook — for example to `apt-get install` extra tools or set up language runtimes via `asdf` — without rebuilding the Docker image.
+
+An example is provided in this repo at `install.sh.ex`, which installs Node.js via `nvm` and symlinks `node`/`npm`/`npx` into `/usr/local/bin` so opencode can find them. Copy it to `~/.opencode_sandbox_home/install.sh` (and `chmod +x`) to use it as a starting point.
 
 ---
 
@@ -201,7 +177,6 @@ alias ocsandbox="OPENCODE_SANDBOX_ALLOWED_DIR=~/MyProjects  bash <this local rep
 
 This also prevents you from running opencode unintentionally in other directories.
 
-
 ---
 
 ## Variables 
@@ -213,7 +188,6 @@ Script variables:
 - `OPENCODE_SANDBOX_CONTAINER_NAME` - set a container name (by default, it is 'opencode' with a hash of your workspace directory)
 - `OPENCODE_PORT` - port exposed by the container (default: `4096`). On macOS this is published as `127.0.0.1:<port>:<port>`; on Linux the container runs with `--network host`.
 - `OPENCODE_SANDBOX_PORTS` - comma-separated extra ports to publish (e.g. `OPENCODE_SANDBOX_PORTS="3000,5173"`) for things like web dev servers. Each port is published as `127.0.0.1:<port>:<port>`. Ports are baked in at container creation, so changing them requires `ocsandbox destroy` and a re-run.
-
 
 ---
 
