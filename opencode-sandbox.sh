@@ -60,6 +60,11 @@ fi
 # Items under $OPENCODE_SANDBOX_HOME that get bind-mounted into the container's
 # config dir. Each one is mounted only if it exists on the host.
 SYNCED_CONFIG_ITEMS=("opencode.json" "AGENTS.md" "skills" "tools" "install.sh")
+# Subset of the above that must be mounted read-only. These are user-managed
+# config that the sandboxed agent should never write back to the host (the
+# install.sh entry in particular is auto-executed on container creation, so
+# letting the agent edit it would be a host-persistence vector).
+SYNCED_CONFIG_ITEMS_READONLY=("opencode.json" "AGENTS.md" "install.sh")
 
 # Detect local timezone in a portable way (timedatectl is Linux-only).
 detect_tz() {
@@ -131,21 +136,15 @@ if [ -z "$RUNNING" ]; then # if the container doesn't exist
       OPENCODE_PORT=$(( (RANDOM % 16384) + 49152 ))
    fi
 
-   # On macOS, --network host does not behave like on Linux (the container's
-   # localhost is not the host's localhost on Docker Desktop). Use bridge +
-   # explicit port publishing for portability.
-   UNAME_S=$(uname -s)
-   if [[ "$UNAME_S" == "Darwin" ]]; then
-      NETWORK_ARGS=(-p "127.0.0.1:${OPENCODE_PORT}:${OPENCODE_PORT}")
-      echo "[*] Forwarding port 127.0.0.1:${OPENCODE_PORT} -> container:${OPENCODE_PORT} (opencode)"
-   else
-      NETWORK_ARGS=(--network host)
-      echo "[*] Using host networking; opencode listening on port ${OPENCODE_PORT}"
-   fi
+   # Use bridge networking with explicit loopback port publishing on every
+   # platform. --network host on Linux would put the container in the host's
+   # network namespace, giving the sandboxed agent direct access to host
+   # loopback services, the host LAN, and cloud metadata endpoints — which
+   # defeats the point of the sandbox.
+   NETWORK_ARGS=(-p "127.0.0.1:${OPENCODE_PORT}:${OPENCODE_PORT}")
+   echo "[*] Forwarding port 127.0.0.1:${OPENCODE_PORT} -> container:${OPENCODE_PORT} (opencode)"
 
    # Extra ports for things like dev servers (e.g. OPENCODE_SANDBOX_PORTS="3000,5173").
-   # Published on both Darwin and Linux: on Linux with --network host docker prints a
-   # harmless warning and the ports work via host networking anyway.
    if [[ -n "${OPENCODE_SANDBOX_PORTS:-}" ]]; then
       IFS=',' read -ra EXTRA_PORTS <<< "$OPENCODE_SANDBOX_PORTS"
       for p in "${EXTRA_PORTS[@]}"; do
@@ -164,8 +163,17 @@ if [ -z "$RUNNING" ]; then # if the container doesn't exist
    for item in "${SYNCED_CONFIG_ITEMS[@]}"; do
       src="$OPENCODE_SANDBOX_HOME/$item"
       if [ -e "$src" ]; then
-         CONFIG_MOUNTS+=(--mount "type=bind,source=$src,target=/opencode/.config/opencode/$item")
-         echo "[*] Syncing config item: $item"
+         mount_spec="type=bind,source=$src,target=/opencode/.config/opencode/$item"
+         ro_marker=""
+         for ro_item in "${SYNCED_CONFIG_ITEMS_READONLY[@]}"; do
+            if [ "$item" = "$ro_item" ]; then
+               mount_spec="$mount_spec,readonly"
+               ro_marker=" (read-only)"
+               break
+            fi
+         done
+         CONFIG_MOUNTS+=(--mount "$mount_spec")
+         echo "[*] Syncing config item: $item$ro_marker"
       fi
    done
 
