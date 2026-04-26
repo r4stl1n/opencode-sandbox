@@ -45,15 +45,6 @@ RUN echo "opencode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/opencode && \
 COPY --chmod=0755 utils/place_in_var.sh  /usr/local/bin/place_in_var
 RUN mkdir -p /var/usr && chown -R opencode:opencode /var/usr
 
-# install asdf
-RUN curl -fsSL https://github.com/asdf-vm/asdf/releases/download/v0.19.0/asdf-v0.19.0-linux-amd64.tar.gz -o asdf.tar.gz  && \
-    tar zxvf asdf.tar.gz && rm -f tar zxvf asdf.tar.gz && chmod +x asdf && mv asdf /usr/local/bin/ 
-
-RUN mkdir -p /asdf && chown -R opencode:opencode /asdf
-
-ENV ASDF_DATA_DIR="/asdf"
-ENV PATH="${ASDF_DATA_DIR}/shims:/opencode/.local/bin:/opencode/.opencode/bin:${PATH}"
-
 # install opencode and move to bin system
 RUN curl -fsSL https://opencode.ai/install | bash   && \
     mv /root/.opencode/bin/opencode /usr/local/bin/
