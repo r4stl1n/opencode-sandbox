@@ -177,7 +177,7 @@ if [ -z "$RUNNING" ]; then # if the container doesn't exist
       fi
    done
 
-   docker run --name "$OPENCODE_SANDBOX_CONTAINER_NAME" -d \
+   docker run --cap-add=NET_RAW --cap-add=NET_ADMIN --name "$OPENCODE_SANDBOX_CONTAINER_NAME" -d \
       ${CONFIG_MOUNTS[@]+"${CONFIG_MOUNTS[@]}"} \
       --mount "type=bind,source=$OPENCODE_SANDBOX_ALLOWED_DIR,target=$OPENCODE_SANDBOX_ALLOWED_DIR" \
       --workdir "$OPENCODE_SANDBOX_ALLOWED_DIR" \
