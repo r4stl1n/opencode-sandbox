@@ -9,36 +9,50 @@ A lightweight, open-source sandbox to run **opencode** securely inside Docker on
 
 ## [*] Overview
 
-`opencode-sandbox` provides an isolated environment for running opencode in a controlled and reproducible way. By leveraging Docker, all execution happens inside a sandbox, minimizing risks to your host system.
+`opencode-sandbox` provides an isolated environment for running opencode in a controlled and reproducible way. All execution happens inside a Docker container, minimizing risk to your host system.
 
-The project runs opencode inside a Docker container with the opencode config directory mapped from the host.
+Everything the sandbox needs lives **inside this repo**: the image, the proxy config, the workspace folder you customize. No `~/.config/opencode`, no `~/.opencode_sandbox_home`, no other host-side state — just clone, configure, and run.
+
+### What gets mounted / baked
+
+| Source (host side) | Destination (container) | When |
+|---|---|---|
+| `defaults/opencode.json` | `/opencode/.config/opencode/opencode.json` | baked at `docker build` |
+| `workspace/AGENTS.md` | `/opencode/.config/opencode/AGENTS.md` (read-only) | mounted if present |
+| `workspace/skills/` | `/opencode/.config/opencode/skills/` | mounted if present |
+| `workspace/tools/` | `/opencode/.config/opencode/tools/` | mounted if present |
+| `workspace/install.sh` | `/opencode/.config/opencode/install.sh` (read-only, auto-run once) | mounted if present |
+| `.env` | proxy container only — never the sandbox | loaded by `docker compose` |
+| your CWD (or `OPENCODE_SANDBOX_ALLOWED_DIR`) | same path inside the container | mounted at sandbox start |
+
+That's the complete list of host inputs. Anything else opencode writes at runtime (plugin install, shell history, installed packages) lives only inside the container.
 
 ---
 
 ## [*] Quick Start
 
 ```bash
-# get this repo
+# 1. Get this repo
 git clone https://github.com/r4stl1n/opencode-sandbox
+cd opencode-sandbox
 
-# build image locally
+# 2. Configure the LLM proxy with your real API keys
+cp .env.example .env
+$EDITOR .env   # set ANTHROPIC_API_KEY and/or OPENAI_API_KEY
+
+# 3. (Optional) Drop your AGENTS.md, skills/, tools/, install.sh into workspace/
+
+# 4. Build the sandbox image
 docker build -t opencode-sandbox .
-
-# run it to try it out
-docker run --rm -it opencode-sandbox
 ```
-Now associate the script with an alias in the `.profile, .bashrc, .zshrc, etc` file.
+
+Now associate the script with an alias in your `.profile`, `.bashrc`, `.zshrc`, etc:
 
 ```bash
 alias ocsandbox="bash <this local repo>/opencode-sandbox.sh"
 ```
 
-To reuse the same .config/opencode use the following alias
-```bash
-alias ocsandbox='OPENCODE_SANDBOX_HOME=~/.config/opencode bash <this local repo>/opencode-sandbox.sh'
-```
-
-Now you can run `ocsandbox` (or another alias name) in your project directory.
+Then run `ocsandbox` from any project directory. The first invocation auto-starts the LLM proxy and creates a per-project sandbox container.
 
 ---
 
@@ -102,7 +116,7 @@ ocsandbox bash
 ```
 It can be useful for:
 - Installing tools (node, python) with `asdf` or `sudo apt install`
-- Setting up your git (or copying your host .gitconfig to .opencode_sandbox_home/)
+- Setting up your git
 - Manually running a server, or debugging
 - Manual configuration
 
@@ -126,68 +140,93 @@ ocsandbox destroy
 
 ---
 
-## [*] Persistent Config
+## [*] The `workspace/` Folder
 
-The default directory for the persistent opencode config is `~/.opencode_sandbox_home`. Instead of bind-mounting the whole directory into the container's `/opencode/.config/opencode`, only a fixed allowlist of items is mounted (each one only if it exists on the host):
+User-side opencode config lives in the repo-local `workspace/` folder, next to `opencode-sandbox.sh`. The script's allowlist (see the table at the top) decides which items get bind-mounted into `/opencode/.config/opencode/` — anything else you drop into `workspace/` is ignored.
 
-- `opencode.json`
-- `AGENTS.md`
-- `skills/`
-- `tools/`
-- `install.sh` (see [Install Hook](#-install-hook))
+`opencode.json` is intentionally **not** in that allowlist. It's baked into the image at build time from `defaults/opencode.json` so opencode always routes through the LLM proxy. To change the default model or add providers, edit `defaults/opencode.json` and rebuild the image (`docker build -t opencode-sandbox .`).
 
-Anything else opencode writes under its config dir at runtime — most notably the plugin runtime install (`node_modules`, `package.json`, `package-lock.json`, `bun.lock` for `@opencode-ai/plugin`) — stays inside the container and does **not** leak back onto the host. Anything else inside the container (installed tools, shell history, etc.) is also **not** persisted — it lives only for the lifetime of the container.
+### Install hook
 
-To reset the config, just delete it: `rm -r ~/.opencode_sandbox_home`
+`workspace/install.sh`, if present, is executed inside the container the first time the container is created. Use it as a one-time provisioning hook — `apt-get install` extra tools, set up language runtimes via `asdf`, etc. — without rebuilding the Docker image.
 
-You can point at a different host directory with the `OPENCODE_SANDBOX_HOME` variable:
+A starting example is provided at `install.sh.ex` in the repo root (installs Node.js via `nvm` and symlinks `node`/`npm`/`npx` into `/usr/local/bin`). Copy it into the workspace and mark it executable:
+
 ```bash
-alias ocsandbox="OPENCODE_SANDBOX_HOME=/your/custom/opencode_sandbox_home  bash <this local repo>/opencode-sandbox.sh"
+cp install.sh.ex workspace/install.sh
+chmod +x workspace/install.sh
 ```
-
-### Install Hook
-
-If `install.sh` exists at the root of `OPENCODE_SANDBOX_HOME`, it is executed inside the container the first time the container is created. Use it as a one-time provisioning hook — for example to `apt-get install` extra tools or set up language runtimes via `asdf` — without rebuilding the Docker image.
-
-An example is provided in this repo at `install.sh.ex`, which installs Node.js via `nvm` and symlinks `node`/`npm`/`npx` into `/usr/local/bin` so opencode can find them. Copy it to `~/.opencode_sandbox_home/install.sh` (and `chmod +x`) to use it as a starting point.
 
 ---
 
-## [*] Default Model
-opencode reads its config from `~/.opencode_sandbox_home/opencode.json` (the host directory, mounted at `/opencode/.config/opencode` inside the container). Set the default model via the top-level `"model"` field, formatted as `"<provider>/<model-id>"`:
+## [*] LLM Proxy
 
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "model": "anthropic/claude-sonnet-4-6"
-}
+The sandbox always routes LLM traffic through a small long-lived **proxy container** (`opencode-sandbox-proxy`) that holds your real provider API keys. The sandbox container only ever sees a placeholder key (the literal string `sandbox`), so a jailbroken agent inside it has no real key to leak.
+
+The proxy auto-starts on the first `ocsandbox` invocation, and the sandbox container is attached to its Docker network so the proxy is reachable at `http://opencode-sandbox-proxy:4000`.
+
+### Setup
+
+```bash
+cp .env.example .env
+$EDITOR .env   # add ANTHROPIC_API_KEY and/or OPENAI_API_KEY (and optionally OPENAI_COMPAT_*)
 ```
 
-The provider key must match either a built-in opencode provider or a custom one defined under `"provider"` in the same file. Changes take effect on the next opencode session — no container rebuild needed.
+`.env` is gitignored. Keys are read **only** by the proxy container — they never enter the sandbox container or your shell environment.
+
+### How it's wired
+
+- The baked `defaults/opencode.json` (inside the image) points opencode's `anthropic` and `openai` providers at the proxy.
+- The script also injects `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, `ANTHROPIC_API_KEY=sandbox`, `OPENAI_API_KEY=sandbox` into the container, so any other SDK that respects those env vars (e.g. the `claude` SDK, the official `openai` SDK) is auto-routed too.
+- To customize the default model or add providers, edit `defaults/opencode.json` and rebuild the image.
+
+### Routes
+
+| Route | Forwards to | Auth header swapped |
+|---|---|---|
+| `/anthropic/{path}` | `ANTHROPIC_UPSTREAM` (default `https://api.anthropic.com`) | `x-api-key` |
+| `/v1/{path}` | `OPENAI_UPSTREAM` (default `https://api.openai.com`) | `Authorization: Bearer …` |
+| `/compat/{path}` | `OPENAI_COMPAT_UPSTREAM` (no default) | `Authorization: Bearer …` |
+
+The `/compat` route is for arbitrary OpenAI-compatible upstreams — LM Studio, Ollama, OpenRouter, vLLM, etc. It's only enabled when you set `OPENAI_COMPAT_UPSTREAM`.
+
+### Managing the proxy
+
+```bash
+ocsandbox proxy up      # start (auto-runs on first ocsandbox invocation too)
+ocsandbox proxy down    # stop and remove
+ocsandbox proxy logs    # follow logs
+ocsandbox proxy status  # show running state
+```
+
+To skip the proxy entirely (no auto-start, no network attach, no env injection), set `OPENCODE_SANDBOX_PROXY=0`.
 
 ---
 
 ## Allowed Project Directories
 
-By default, one Docker instance is created per project directory. However, you can use the same Docker instance for a workspace with multiple projects (e.g., `~/MyProjects`). You can configure this in your alias.
+> Note: this is *project* scoping, not the `workspace/` folder. By default each project directory gets its own sandbox container.
+
+You can share one container across multiple projects under a parent directory (e.g. `~/MyProjects`) by setting `OPENCODE_SANDBOX_ALLOWED_DIR` in your alias:
 
 ```bash
-alias ocsandbox="OPENCODE_SANDBOX_ALLOWED_DIR=~/MyProjects  bash <this local repo>/opencode-sandbox.sh"
+alias ocsandbox="OPENCODE_SANDBOX_ALLOWED_DIR=~/MyProjects bash <this local repo>/opencode-sandbox.sh"
 ```
 
-This also prevents you from running opencode unintentionally in other directories.
+This also prevents you from accidentally launching opencode in directories outside that root.
 
 ---
 
-## Variables 
+## Environment variables
 
-Script variables:
-- `OPENCODE_SANDBOX_HOME` - host directory holding opencode config items (`opencode.json`, `AGENTS.md`, `skills/`, `tools/`, `install.sh`); only those allowlisted items are bind-mounted into `/opencode/.config/opencode`, so opencode's runtime plugin install stays container-internal
-- `OPENCODE_SANDBOX_ALLOWED_DIR` - your projects workspace/directory
-- `OPENCODE_SANDBOX_IMAGE_DOCKER` - custom image for docker
-- `OPENCODE_SANDBOX_CONTAINER_NAME` - set a container name (by default, it is 'opencode' with a hash of your workspace directory)
-- `OPENCODE_PORT` - port exposed by the container (default: `4096`). On macOS this is published as `127.0.0.1:<port>:<port>`; on Linux the container runs with `--network host`.
-- `OPENCODE_SANDBOX_PORTS` - comma-separated extra ports to publish (e.g. `OPENCODE_SANDBOX_PORTS="3000,5173"`) for things like web dev servers. Each port is published as `127.0.0.1:<port>:<port>`. Ports are baked in at container creation, so changing them requires `ocsandbox destroy` and a re-run.
+| Variable | Default | Notes |
+|---|---|---|
+| `OPENCODE_SANDBOX_ALLOWED_DIR` | current dir | Host root from which `ocsandbox` may launch a sandbox; also bind-mounted into the container at the same path. |
+| `OPENCODE_SANDBOX_IMAGE_DOCKER` | `opencode-sandbox` | Sandbox image tag. |
+| `OPENCODE_SANDBOX_CONTAINER_NAME` | `ocsandbox-<dir>-<hash>` | Override the auto-generated per-project container name. |
+| `OPENCODE_PORT` | random high port (49152–65535) | Primary port published as `127.0.0.1:<port>:<port>` on every platform (always bridge networking — no `--network host`). |
+| `OPENCODE_SANDBOX_PORTS` | _unset_ | Comma-separated extra ports to publish (e.g. `3000,5173`). Baked in at container creation — changing them requires `ocsandbox destroy` and a re-run. |
+| `OPENCODE_SANDBOX_PROXY` | `1` | Set to `0` to disable LLM proxy plumbing entirely (no auto-start, no network attach, no env injection). |
 
 ---
 

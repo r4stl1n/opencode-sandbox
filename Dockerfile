@@ -1,4 +1,5 @@
-FROM ubuntu:latest
+#FROM ubuntu:latest
+FROM kalilinux/kali-rolling
 
 # opencode envs
 ENV BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
@@ -49,6 +50,11 @@ RUN mkdir -p /workspace && chown -R opencode:opencode /workspace
 # config files into it (rather than the whole dir) doesn't leave the parent
 # owned by root and unwritable for opencode's own plugin install.
 RUN mkdir -p /opencode/.config/opencode && chown -R opencode:opencode /opencode/.config
+
+# Bake the proxy-routed opencode config into the image. opencode.json is NOT
+# mountable from the host workspace — this file is the single source of truth
+# so opencode always routes through the LLM proxy at opencode-sandbox-proxy:4000.
+COPY --chown=opencode:opencode defaults/opencode.json /opencode/.config/opencode/opencode.json
 
 # set default workspace
 WORKDIR /workspace

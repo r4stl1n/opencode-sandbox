@@ -6,3 +6,7 @@ opencode-sandbox_*.sh
 Dockerfile_*
 
 *.log
+
+# Real LLM provider keys for the proxy — never commit.
+.env
+.DS_Store
