@@ -21,10 +21,75 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # ── LOCAL OLLAMA (gated by USE_LOCAL=1 in .env) ──────────────────────────
+  # The script enables these by adding `--profile local` to docker compose
+  # when USE_LOCAL=1, and overrides OPENAI_COMPAT_UPSTREAM=http://ollama:11434
+  # so the proxy's /compat route forwards here.
+  ollama:
+    profiles: ["local"]
+    image: ollama/ollama:latest
+    container_name: opencode-sandbox-ollama
+    restart: unless-stopped
+    volumes:
+      - opencode-sandbox-ollama:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=-1
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_MAX_LOADED_MODELS=2
+    # GPU passthrough is off by default (won't work on macOS). To enable on
+    # Linux + nvidia-container-toolkit, uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - opencode-sandbox-proxy
+
+  # One-shot: pulls the two configured models and exits.
+  ollama-init:
+    profiles: ["local"]
+    image: ollama/ollama:latest
+    container_name: opencode-sandbox-ollama-init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - opencode-sandbox-ollama:/root/.ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL_PRIMARY=${OLLAMA_MODEL_PRIMARY:-}
+      - OLLAMA_MODEL_SECONDARY=${OLLAMA_MODEL_SECONDARY:-}
+    entrypoint: >
+      /bin/sh -c "
+        for m in $$OLLAMA_MODEL_PRIMARY $$OLLAMA_MODEL_SECONDARY; do
+          [ -z \"$$m\" ] && continue;
+          echo \"Pulling $$m...\";
+          ollama pull \"$$m\" || exit 1;
+        done;
+        echo 'Ollama models ready.'
+      "
+    restart: "no"
+    networks:
+      - opencode-sandbox-proxy
+
 networks:
   # Shared bridge the sandbox container is `docker network connect`'d to
   # after creation. Sandboxes keep their default bridge (and thus public
-  # internet) and gain a second NIC that can resolve `opencode-sandbox-proxy`.
+  # internet) and gain a second NIC that can resolve `opencode-sandbox-proxy`
+  # (and, when USE_LOCAL=1, also `ollama`).
   opencode-sandbox-proxy:
     name: opencode-sandbox-proxy
     driver: bridge
+
+volumes:
+  opencode-sandbox-ollama:
+    name: opencode-sandbox-ollama

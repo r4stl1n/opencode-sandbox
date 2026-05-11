@@ -1,5 +1,5 @@
-#FROM ubuntu:latest
-FROM kalilinux/kali-rolling
+FROM ubuntu:latest
+#FROM kalilinux/kali-rolling
 
 # opencode envs
 ENV BUN_RUNTIME_TRANSPILER_CACHE_PATH=0

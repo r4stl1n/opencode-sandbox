@@ -88,17 +88,17 @@ async def openai(path, request: Request):
 async def openai_compat(path, request: Request):
     # Generic OpenAI-compatible passthrough. Upstream URL is configurable so
     # users can point this at LM Studio, Ollama, OpenRouter, vLLM, etc.
-    # The compat key is optional — some local servers don't require auth, in
-    # which case we pass an empty Bearer (and the upstream ignores it).
     if not OPENAI_COMPAT_UPSTREAM:
         raise HTTPException(503, detail="proxy: OPENAI_COMPAT_UPSTREAM not configured")
-    return await _forward(
-        request,
-        OPENAI_COMPAT_UPSTREAM,
-        _ensure_v1(path),
-        "authorization",
-        f"Bearer {OPENAI_COMPAT_API_KEY}",
+    # If no compat key is configured (typical for local ollama / llama.cpp
+    # which ignore auth), pass through the client's Authorization header
+    # rather than overriding with an empty "Bearer " (httpx rejects that).
+    auth = (
+        f"Bearer {OPENAI_COMPAT_API_KEY}"
+        if OPENAI_COMPAT_API_KEY
+        else request.headers.get("authorization", "Bearer sandbox")
     )
+    return await _forward(request, OPENAI_COMPAT_UPSTREAM, _ensure_v1(path), "authorization", auth)
 
 
 @app.get("/healthz")

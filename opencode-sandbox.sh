@@ -101,6 +101,19 @@ container_running() {
    [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null || true)" = "true" ]
 }
 
+# Read a single VAR=value line from .env (returns empty string if missing).
+# Strips surrounding double or single quotes. Doesn't `source` the file, so
+# weird shell-syntax content in .env can't break the script.
+read_env_var() {
+   local key="$1" file="$SCRIPT_DIR/.env"
+   [ -f "$file" ] || { echo ""; return; }
+   local line
+   line=$(grep -E "^${key}=" "$file" 2>/dev/null | tail -n1 | cut -d= -f2-)
+   line="${line%\"}"; line="${line#\"}"
+   line="${line%\'}"; line="${line#\'}"
+   echo "$line"
+}
+
 # ---------------------------------------------------------------------------
 # 3. Builders — populate global arrays consumed by `docker run`
 # ---------------------------------------------------------------------------
@@ -167,8 +180,18 @@ build_proxy_env_args() {
 # 4. Lifecycle
 # ---------------------------------------------------------------------------
 
+OLLAMA_CONTAINER="opencode-sandbox-ollama"
+
+# Echo "1" if USE_LOCAL=1 in .env, else "0".
+use_local_enabled() {
+   local v; v=$(read_env_var USE_LOCAL)
+   [ "${v:-0}" = "1" ] && echo "1" || echo "0"
+}
+
 # Bring the long-lived proxy up (idempotent). No-op if PROXY_ENABLED!=1, the
-# compose file is missing, or `docker compose` isn't available.
+# compose file is missing, or `docker compose` isn't available. When
+# USE_LOCAL=1 in .env, also brings up the local ollama container and
+# auto-points the proxy's /compat route at http://ollama:11434.
 ensure_proxy_running() {
    [ "$PROXY_ENABLED" = "1" ] || return 0
    if [ ! -f "$PROXY_COMPOSE_FILE" ]; then
@@ -179,12 +202,30 @@ ensure_proxy_running() {
       echo "[!] proxy: 'docker compose' not available — skipping."
       return 0
    fi
-   if container_running "$PROXY_CONTAINER"; then return 0; fi
-   echo "[*] Starting LLM proxy ($PROXY_CONTAINER) ..."
+
+   local use_local; use_local=$(use_local_enabled)
+   local compose_args=(-f "$PROXY_COMPOSE_FILE")
+   local up_args=(up -d llm-proxy)
+   local env_prefix=()
+
+   if [ "$use_local" = "1" ]; then
+      compose_args=(--profile local -f "$PROXY_COMPOSE_FILE")
+      up_args=(up -d)   # all profile-eligible services
+      env_prefix=(env OPENAI_COMPAT_UPSTREAM=http://ollama:11434)
+      if container_running "$PROXY_CONTAINER" && container_running "$OLLAMA_CONTAINER"; then
+         return 0
+      fi
+      echo "[*] Starting LLM proxy + local ollama (USE_LOCAL=1) ..."
+   else
+      if container_running "$PROXY_CONTAINER"; then return 0; fi
+      echo "[*] Starting LLM proxy ($PROXY_CONTAINER) ..."
+   fi
+
    if [ ! -f "$SCRIPT_DIR/.env" ]; then
       echo "[!] proxy: no $SCRIPT_DIR/.env — provider routes will return 503 until you add keys."
    fi
-   docker compose -f "$PROXY_COMPOSE_FILE" up -d llm-proxy >/dev/null \
+
+   ${env_prefix[@]+"${env_prefix[@]}"} docker compose "${compose_args[@]}" "${up_args[@]}" >/dev/null \
       || echo "[!] proxy: 'docker compose up' failed — continuing without proxy."
 }
 
@@ -256,13 +297,28 @@ case "${1:-}" in
       ;;
    proxy)
       sub="${2:-status}"
+      # `down` always passes --profile local so leftover ollama from a previous
+      # USE_LOCAL=1 session is also torn down. `up` honors the current .env.
       case "$sub" in
-         up)     docker compose -f "$PROXY_COMPOSE_FILE" up -d llm-proxy ;;
-         down)   docker compose -f "$PROXY_COMPOSE_FILE" down ;;
-         logs)   docker compose -f "$PROXY_COMPOSE_FILE" logs -f llm-proxy ;;
-         status) docker ps --filter "name=^${PROXY_CONTAINER}$" \
-                    --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' ;;
-         *) echo "Usage: ocsandbox proxy [up|down|logs|status]" >&2; exit 1 ;;
+         up)
+            ensure_proxy_running
+            ;;
+         down)
+            docker compose --profile local -f "$PROXY_COMPOSE_FILE" down
+            ;;
+         logs)
+            docker compose -f "$PROXY_COMPOSE_FILE" logs -f llm-proxy
+            ;;
+         status)
+            docker ps \
+               --filter "name=^${PROXY_CONTAINER}$" \
+               --filter "name=^opencode-sandbox-ollama$" \
+               --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+            ;;
+         *)
+            echo "Usage: ocsandbox proxy [up|down|logs|status]" >&2
+            exit 1
+            ;;
       esac
       exit 0
       ;;

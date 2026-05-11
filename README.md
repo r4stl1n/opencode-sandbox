@@ -27,6 +27,8 @@ Everything the sandbox needs lives **inside this repo**: the image, the proxy co
 
 That's the complete list of host inputs. Anything else opencode writes at runtime (plugin install, shell history, installed packages) lives only inside the container.
 
+When `USE_LOCAL=1`, a named Docker volume (`opencode-sandbox-ollama`) is also created to persist pulled Ollama models between restarts.
+
 ---
 
 ## [*] Quick Start
@@ -194,12 +196,30 @@ The `/compat` route is for arbitrary OpenAI-compatible upstreams — LM Studio, 
 
 ```bash
 ocsandbox proxy up      # start (auto-runs on first ocsandbox invocation too)
-ocsandbox proxy down    # stop and remove
+ocsandbox proxy down    # stop and remove (also tears down ollama if it was up)
 ocsandbox proxy logs    # follow logs
-ocsandbox proxy status  # show running state
+ocsandbox proxy status  # show proxy + ollama running state
 ```
 
 To skip the proxy entirely (no auto-start, no network attach, no env injection), set `OPENCODE_SANDBOX_PROXY=0`.
+
+### Local mode (Ollama)
+
+Set `USE_LOCAL=1` in `.env` to spin up a local Ollama container alongside the proxy. The script will:
+
+1. Bring up the `ollama` and `ollama-init` services (compose `local` profile).
+2. `ollama-init` pulls `OLLAMA_MODEL_PRIMARY` and `OLLAMA_MODEL_SECONDARY` into a named docker volume on first run; subsequent starts are instant.
+3. Override `OPENAI_COMPAT_UPSTREAM` to `http://ollama:11434` so the proxy's `/compat` route forwards to Ollama (the value in `.env` is ignored while `USE_LOCAL=1`).
+
+```env
+USE_LOCAL=1
+OLLAMA_MODEL_PRIMARY=qwen2.5-coder:7b
+OLLAMA_MODEL_SECONDARY=llama3.2:3b
+```
+
+The baked `defaults/opencode.json` ships with an `ollama` provider listing both models. Switch the active model inside opencode via `/models`, or change the top-level `"model"` field in `defaults/opencode.json` and rebuild the image.
+
+GPU passthrough is **off** by default (won't work on macOS). To enable on Linux + nvidia-container-toolkit, uncomment the `deploy.resources` block on the `ollama` service in `docker-compose.yml`.
 
 ---
 
